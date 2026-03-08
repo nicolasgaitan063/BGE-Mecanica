@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TurboLar - Gestión de Taller</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <style>
         * {
             margin: 0;
@@ -125,10 +129,24 @@
     </div>
 
     <script>
-        // Simulación de datos (necesitas un backend real)
-        let clientes = JSON.parse(localStorage.getItem('clientes')) || [];
-        let servicios = JSON.parse(localStorage.getItem('servicios')) || [];
-        let pagosEmpleados = JSON.parse(localStorage.getItem('pagosEmpleados')) || [];
+        // Configura tu proyecto Firebase aquí (lo obtienes en la consola de Firebase)
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0hVaOZH9PnjwqCVjSk0i2-E_n2jUw0go",
+            authDomain: "web-turbolar.firebaseapp.com",
+            projectId: "web-turbolar",
+            storageBucket: "web-turbolar.firebasestorage.app",
+            messagingSenderId: "553586882767",
+            appId: "1:553586882767:web:a9b360394fa1de53461fba",
+            measurementId: "G-7FY19D5VSE"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+
+        // Datos en memoria; la persistencia será en Firestore
+        let clientes = [];
+        let servicios = [];
+        let pagosEmpleados = [];
         let editingIndex = -1;
 
         function updateCounts() {
@@ -140,7 +158,8 @@
             document.getElementById('totalPagos').innerText = '$' + totalPagos.toFixed(2);
         }
 
-        function showClientes() {
+        async function showClientes() {
+            await loadClientes();
             let content = '<h3>Gestión de Clientes</h3>';
             content += '<input type="text" id="nombreCliente" placeholder="Nombre cliente"><br><br>';
             content += '<input type="tel" id="telefonoCliente" placeholder="Teléfono"><br><br>';
@@ -217,12 +236,12 @@
                 completado: false
             };
             if (editingIndex >= 0) {
-                clientes[editingIndex] = cliente;
+                const id = clientes[editingIndex].id;
+                await db.collection('clientes').doc(id).set(cliente);
                 editingIndex = -1;
             } else {
-                clientes.push(cliente);
+                const docRef = await db.collection('clientes').add(cliente);
             }
-            localStorage.setItem('clientes', JSON.stringify(clientes));
             updateCounts();
             showClientes();
         }
@@ -230,6 +249,42 @@
         function editarCliente(i) {
             editingIndex = i;
             showClientes();
+        }
+
+        async function eliminarCliente(i) {
+            const id = clientes[i].id;
+            await db.collection('clientes').doc(id).delete();
+            updateCounts();
+            showClientes();
+        }
+
+        async function toggleCompletado(i) {
+            const c = clientes[i];
+            c.completado = !c.completado;
+            await db.collection('clientes').doc(c.id).update({completado: c.completado});
+            updateCounts();
+            showClientes();
+        }
+
+        async function loadClientes() {
+            const snapshot = await db.collection('clientes').get();
+            clientes = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+        }
+
+        async function loadPagos() {
+            const snapshot = await db.collection('pagos').get();
+            pagosEmpleados = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+        }
+
+        async function updateCounts() {
+            await loadClientes();
+            await loadPagos();
+            document.getElementById('clientCount').innerText = clientes.length;
+            document.getElementById('serviceCount').innerText = clientes.filter(c => !c.completado).length;
+            const totalGanancia = clientes.filter(c => c.completado).reduce((sum, c) => sum + ((c.montoCobrado || 0) - (c.costoRepuestos || 0)), 0);
+            const totalPagos = pagosEmpleados.reduce((sum, p) => sum + (p.montoPago || 0), 0);
+            document.getElementById('totalIncome').innerText = '$' + (totalGanancia - totalPagos).toFixed(2);
+            document.getElementById('totalPagos').innerText = '$' + totalPagos.toFixed(2);
         }
 
         function cancelarEdicion() {
@@ -251,19 +306,6 @@
             document.getElementById('fotoPreview').innerHTML = c.fotoIngreso ? '<img src="' + c.fotoIngreso + '" width="100" height="100">' : '';
         }
 
-        function eliminarCliente(i) {
-            clientes.splice(i, 1);
-            localStorage.setItem('clientes', JSON.stringify(clientes));
-            updateCounts();
-            showClientes();
-        }
-
-        function toggleCompletado(i) {
-            clientes[i].completado = !clientes[i].completado;
-            localStorage.setItem('clientes', JSON.stringify(clientes));
-            updateCounts();
-            showClientes();
-        }
 
         function exportarClientePDF(i) {
             const c = clientes[i];
@@ -287,7 +329,11 @@
 
         let editingPagoIndex = -1;
 
-        function showPagos() {
+        async function showPagos() {
+            // cargar pagos desde Firestore
+            const snapshot = await db.collection('pagos').get();
+            pagosEmpleados = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+
             let content = '<h3>Gestión de Pagos a Empleados</h3>';
             content += '<input type="date" id="fechaPago" placeholder="Fecha de pago"><br><br>';
             content += '<input type="number" id="montoPago" placeholder="Monto del pago" step="0.01"><br><br>';
@@ -307,18 +353,18 @@
             }
         }
 
-        function agregarOEditarPago() {
+        async function agregarOEditarPago() {
             const pago = {
                 fechaPago: document.getElementById('fechaPago').value,
                 montoPago: parseFloat(document.getElementById('montoPago').value) || 0
             };
             if (editingPagoIndex >= 0) {
-                pagosEmpleados[editingPagoIndex] = pago;
+                const id = pagosEmpleados[editingPagoIndex].id;
+                await db.collection('pagos').doc(id).set(pago);
                 editingPagoIndex = -1;
             } else {
-                pagosEmpleados.push(pago);
+                await db.collection('pagos').add(pago);
             }
-            localStorage.setItem('pagosEmpleados', JSON.stringify(pagosEmpleados));
             updateCounts();
             showPagos();
         }
@@ -339,14 +385,15 @@
             document.getElementById('montoPago').value = p.montoPago || '';
         }
 
-        function eliminarPago(i) {
-            pagosEmpleados.splice(i, 1);
-            localStorage.setItem('pagosEmpleados', JSON.stringify(pagosEmpleados));
+        async function eliminarPago(i) {
+            const id = pagosEmpleados[i].id;
+            await db.collection('pagos').doc(id).delete();
             updateCounts();
             showPagos();
         }
 
-        function showServicios() {
+        async function showServicios() {
+            await loadClientes();
             let content = '<h3>Servicios Pendientes</h3>';
             const pendientes = clientes.filter(c => !c.completado);
             if (pendientes.length === 0) {
@@ -361,7 +408,9 @@
             document.getElementById('content').innerHTML = content;
         }
 
-        function showIngresos() {
+        async function showIngresos() {
+            await loadClientes();
+            await loadPagos();
             const completados = clientes.filter(c => c.completado);
             const totalCostoRepuestos = completados.reduce((sum, c) => sum + (c.costoRepuestos || 0), 0);
             const totalMontoCobrado = completados.reduce((sum, c) => sum + (c.montoCobrado || 0), 0);
@@ -412,7 +461,7 @@
             document.getElementById('content').innerHTML = content;
         }
 
-        updateCounts();
+        updateCounts().then(showClientes);
     </script>
 </body>
 </html>
