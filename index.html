@@ -134,7 +134,7 @@
             apiKey: "AIzaSyC0hVaOZH9PnjwqCVjSk0i2-E_n2jUw0go",
             authDomain: "web-turbolar.firebaseapp.com",
             projectId: "web-turbolar",
-            storageBucket: "web-turbolar.firebasestorage.app",
+            storageBucket: "web-turbolar.appspot.com", // corregido
             messagingSenderId: "553586882767",
             appId: "1:553586882767:web:a9b360394fa1de53461fba",
             measurementId: "G-7FY19D5VSE"
@@ -192,13 +192,15 @@
         }
 
         async function agregarOEditarCliente() {
-            const nombre = document.getElementById('nombreCliente').value.trim();
-            const telefono = document.getElementById('telefonoCliente').value.trim();
-            const tipoAuto = document.getElementById('tipoAuto').value.trim();
-            const patente = document.getElementById('patente').value.trim();
-            const trabajo = document.getElementById('trabajo').value.trim();
-            const fechaIngreso = document.getElementById('fechaIngreso').value;
-            const fechaSalida = document.getElementById('fechaSalida').value;
+            console.log('agregarOEditarCliente called');
+            try {
+                const nombre = document.getElementById('nombreCliente').value.trim();
+                const telefono = document.getElementById('telefonoCliente').value.trim();
+                const tipoAuto = document.getElementById('tipoAuto').value.trim();
+                const patente = document.getElementById('patente').value.trim();
+                const trabajo = document.getElementById('trabajo').value.trim();
+                const fechaIngreso = document.getElementById('fechaIngreso').value;
+                const fechaSalida = document.getElementById('fechaSalida').value;
 
             if (!nombre || !telefono || !tipoAuto || !trabajo || !fechaIngreso) {
                 alert("Por favor, complete todos los campos obligatorios: Nombre, Teléfono, Tipo de Auto, Trabajo y Fecha de Ingreso.");
@@ -244,6 +246,8 @@
             }
             updateCounts();
             showClientes();
+        } catch(e) {
+            console.error('error en agregarOEditarCliente', e);
         }
 
         function editarCliente(i) {
