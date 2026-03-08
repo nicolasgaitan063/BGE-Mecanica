@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TurboLar - Gestión de Taller</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+
+            line-height: 1.6;
+        }
+        nav {
+            background-color: #1a1a1a;
+            padding: 15px;
+            color: white;
+        }
+        nav h1 {
+            display: inline-block;
+            color: #ff6600;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #ff6600;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #e55a00;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow-x: auto;
+            display: block;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        th {
+            background-color: #ff6600;
+            color: white;
+        }
+        @media (max-width: 768px) {
+            nav h1 {
+                font-size: 1.5em;
+            }
+            .container {
+                padding: 10px;
+            }
+            .card {
+                padding: 15px;
+            }
+            button {
+                padding: 8px 15px;
+                font-size: 0.9em;
+            }
+            input {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <h1>🔧 TurboLar</h1>
+        <p>Sistema de Gestión - Especialidad en Turbos</p>
+    </nav>
+
+    <div class="container">
+        <h2>Dashboard Principal</h2>
+        <div class="dashboard">
+            <div class="card">
+                <h3>Clientes</h3>
+                <p id="clientCount">0</p>
+                <button onclick="showClientes()">Gestionar</button>
+            </div>
+            <div class="card">
+                <h3>Servicios Pendientes</h3>
+                <p id="serviceCount">0</p>
+                <button onclick="showServicios()">Gestionar</button>
+            </div>
+            <div class="card">
+                <h3>Ingresos Totales</h3>
+                <p id="totalIncome">$0</p>
+                <button onclick="showIngresos()">Ver Reportes</button>
+            </div>
+            <div class="card">
+                <h3>Pagos a Empleados</h3>
+                <p id="totalPagos">$0</p>
+                <button onclick="showPagos()">Gestionar</button>
+            </div>
+        </div>
+
+        <div id="content" style="margin-top: 40px;"></div>
+    </div>
+
+    <script>
+        // Simulación de datos (necesitas un backend real)
+        let clientes = JSON.parse(localStorage.getItem('clientes')) || [];
+        let servicios = JSON.parse(localStorage.getItem('servicios')) || [];
+        let pagosEmpleados = JSON.parse(localStorage.getItem('pagosEmpleados')) || [];
+        let editingIndex = -1;
+
+        function updateCounts() {
+            document.getElementById('clientCount').innerText = clientes.length;
+            document.getElementById('serviceCount').innerText = clientes.filter(c => !c.completado).length;
+            const totalGanancia = clientes.filter(c => c.completado).reduce((sum, c) => sum + ((c.montoCobrado || 0) - (c.costoRepuestos || 0)), 0);
+            const totalPagos = pagosEmpleados.reduce((sum, p) => sum + (p.montoPago || 0), 0);
+            document.getElementById('totalIncome').innerText = '$' + (totalGanancia - totalPagos).toFixed(2);
+            document.getElementById('totalPagos').innerText = '$' + totalPagos.toFixed(2);
+        }
+
+        function showClientes() {
+            let content = '<h3>Gestión de Clientes</h3>';
+            content += '<input type="text" id="nombreCliente" placeholder="Nombre cliente"><br><br>';
+            content += '<input type="tel" id="telefonoCliente" placeholder="Teléfono"><br><br>';
+            content += '<input type="text" id="tipoAuto" placeholder="Tipo de auto"><br><br>';
+            content += '<input type="text" id="patente" placeholder="Patente del vehículo"><br><br>';
+            content += '<input type="text" id="trabajo" placeholder="Trabajo realizado"><br><br>';
+            content += '<input type="date" id="fechaIngreso" placeholder="Fecha de ingreso"><br><br>';
+            content += '<input type="date" id="fechaSalida" placeholder="Fecha de salida"><br><br>';
+            content += '<input type="file" id="fotoIngreso" accept="image/*"><br><br>';
+            content += '<div id="fotoPreview"></div>';
+            content += '<input type="number" id="costoRepuestos" placeholder="Costo de repuestos" step="0.01"><br><br>';
+            content += '<input type="number" id="montoCobrado" placeholder="Monto cobrado al cliente" step="0.01"><br><br>';
+            content += '<button onclick="agregarOEditarCliente()">' + (editingIndex >= 0 ? 'Guardar Cambios' : 'Agregar Cliente') + '</button>';
+            if (editingIndex >= 0) {
+                content += ' <button onclick="cancelarEdicion()">Cancelar</button>';
+            }
+            content += '<br><br>';
+            content += '<table><tr><th>Nombre</th><th>Teléfono</th><th>Tipo de Auto</th><th>Patente</th><th>Trabajo</th><th>Fecha Ingreso</th><th>Fecha Salida</th><th>Costo Repuestos</th><th>Monto Cobrado</th><th>Ganancia</th><th>Foto</th><th>Completado</th><th>Acciones</th></tr>';
+            clientes.forEach((c, i) => {
+                const ganancia = c.completado ? ((c.montoCobrado || 0) - (c.costoRepuestos || 0)) : 0;
+                const completadoText = c.completado ? 'Sí' : 'No';
+                const toggleText = c.completado ? 'Marcar Pendiente' : 'Marcar Completado';
+                content += `<tr><td>${c.nombre}</td><td>${c.telefono}</td><td>${c.tipoAuto || ''}</td><td>${c.patente || ''}</td><td>${c.trabajo || ''}</td><td>${c.fechaIngreso || ''}</td><td>${c.fechaSalida || ''}</td><td>$${c.costoRepuestos || 0}</td><td>$${c.montoCobrado || 0}</td><td>$${ganancia.toFixed(2)}</td><td>${c.fotoIngreso ? '<img src="' + c.fotoIngreso + '" width="50" height="50">' : 'No'}</td><td>${completadoText}</td><td><button onclick="editarCliente(${i})">Editar</button><br><button onclick="toggleCompletado(${i})">${toggleText}</button><br><button onclick="eliminarCliente(${i})">Eliminar</button><br><button onclick="exportarClientePDF(${i})">Exportar PDF</button></td></tr>`;
+            });
+            content += '</table>';
+            document.getElementById('content').innerHTML = content;
+            if (editingIndex >= 0) {
+                cargarDatosCliente(editingIndex);
+            }
+        }
+
+        async function agregarOEditarCliente() {
+            const nombre = document.getElementById('nombreCliente').value.trim();
+            const telefono = document.getElementById('telefonoCliente').value.trim();
+            const tipoAuto = document.getElementById('tipoAuto').value.trim();
+            const patente = document.getElementById('patente').value.trim();
+            const trabajo = document.getElementById('trabajo').value.trim();
+            const fechaIngreso = document.getElementById('fechaIngreso').value;
+            const fechaSalida = document.getElementById('fechaSalida').value;
+
+            if (!nombre || !telefono || !tipoAuto || !trabajo || !fechaIngreso) {
+                alert("Por favor, complete todos los campos obligatorios: Nombre, Teléfono, Tipo de Auto, Trabajo y Fecha de Ingreso.");
+                return;
+            }
+
+            if (fechaSalida && fechaIngreso && new Date(fechaSalida) <= new Date(fechaIngreso)) {
+                alert("La fecha de salida debe ser posterior a la fecha de ingreso.");
+                return;
+            }
+
+            const fileInput = document.getElementById('fotoIngreso');
+            let fotoIngreso = null;
+            if (fileInput.files[0]) {
+                fotoIngreso = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(fileInput.files[0]);
+                });
+            } else if (editingIndex >= 0) {
+                fotoIngreso = clientes[editingIndex].fotoIngreso;
+            }
+
+            const cliente = {
+                nombre: nombre,
+                telefono: telefono,
+                tipoAuto: tipoAuto,
+                patente: patente,
+                trabajo: trabajo,
+                fechaIngreso: fechaIngreso,
+                fechaSalida: fechaSalida,
+                costoRepuestos: parseFloat(document.getElementById('costoRepuestos').value) || 0,
+                montoCobrado: parseFloat(document.getElementById('montoCobrado').value) || 0,
+                fotoIngreso: fotoIngreso,
+                completado: false
+            };
+            if (editingIndex >= 0) {
+                clientes[editingIndex] = cliente;
+                editingIndex = -1;
+            } else {
+                clientes.push(cliente);
+            }
+            localStorage.setItem('clientes', JSON.stringify(clientes));
+            updateCounts();
+            showClientes();
+        }
+
+        function editarCliente(i) {
+            editingIndex = i;
+            showClientes();
+        }
+
+        function cancelarEdicion() {
+            editingIndex = -1;
+            showClientes();
+        }
+
+        function cargarDatosCliente(i) {
+            const c = clientes[i];
+            document.getElementById('nombreCliente').value = c.nombre;
+            document.getElementById('telefonoCliente').value = c.telefono;
+            document.getElementById('tipoAuto').value = c.tipoAuto || '';
+            document.getElementById('patente').value = c.patente || '';
+            document.getElementById('trabajo').value = c.trabajo || '';
+            document.getElementById('fechaIngreso').value = c.fechaIngreso || '';
+            document.getElementById('fechaSalida').value = c.fechaSalida || '';
+            document.getElementById('costoRepuestos').value = c.costoRepuestos || '';
+            document.getElementById('montoCobrado').value = c.montoCobrado || '';
+            document.getElementById('fotoPreview').innerHTML = c.fotoIngreso ? '<img src="' + c.fotoIngreso + '" width="100" height="100">' : '';
+        }
+
+        function eliminarCliente(i) {
+            clientes.splice(i, 1);
+            localStorage.setItem('clientes', JSON.stringify(clientes));
+            updateCounts();
+            showClientes();
+        }
+
+        function toggleCompletado(i) {
+            clientes[i].completado = !clientes[i].completado;
+            localStorage.setItem('clientes', JSON.stringify(clientes));
+            updateCounts();
+            showClientes();
+        }
+
+        function exportarClientePDF(i) {
+            const c = clientes[i];
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text(`Reporte de Cliente: ${c.nombre}`, 10, 10);
+            doc.text(`Teléfono: ${c.telefono}`, 10, 20);
+            doc.text(`Tipo de Auto: ${c.tipoAuto || ''}`, 10, 30);
+            doc.text(`Patente: ${c.patente || ''}`, 10, 40);
+            doc.text(`Trabajo Realizado: ${c.trabajo || ''}`, 10, 50);
+            doc.text(`Fecha de Ingreso: ${c.fechaIngreso || ''}`, 10, 60);
+            doc.text(`Fecha de Salida: ${c.fechaSalida || ''}`, 10, 70);
+            doc.text(`Costo de Repuestos: $${c.costoRepuestos || 0}`, 10, 80);
+            doc.text(`Monto Cobrado: $${c.montoCobrado || 0}`, 10, 90);
+            doc.text(`Completado: ${c.completado ? 'Sí' : 'No'}`, 10, 100);
+            if (c.fotoIngreso) {
+                doc.addImage(c.fotoIngreso, 'JPEG', 10, 110, 50, 50);
+            }
+            doc.save(`${c.nombre}_reporte.pdf`);
+        }
+
+        let editingPagoIndex = -1;
+
+        function showPagos() {
+            let content = '<h3>Gestión de Pagos a Empleados</h3>';
+            content += '<input type="date" id="fechaPago" placeholder="Fecha de pago"><br><br>';
+            content += '<input type="number" id="montoPago" placeholder="Monto del pago" step="0.01"><br><br>';
+            content += '<button onclick="agregarOEditarPago()">' + (editingPagoIndex >= 0 ? 'Guardar Cambios' : 'Agregar Pago') + '</button>';
+            if (editingPagoIndex >= 0) {
+                content += ' <button onclick="cancelarEdicionPago()">Cancelar</button>';
+            }
+            content += '<br><br>';
+            content += '<table><tr><th>Fecha de Pago</th><th>Monto</th><th>Acciones</th></tr>';
+            pagosEmpleados.forEach((p, i) => {
+                content += `<tr><td>${p.fechaPago || ''}</td><td>$${p.montoPago || 0}</td><td><button onclick="editarPago(${i})">Editar</button><br><button onclick="eliminarPago(${i})">Eliminar</button></td></tr>`;
+            });
+            content += '</table>';
+            document.getElementById('content').innerHTML = content;
+            if (editingPagoIndex >= 0) {
+                cargarDatosPago(editingPagoIndex);
+            }
+        }
+
+        function agregarOEditarPago() {
+            const pago = {
+                fechaPago: document.getElementById('fechaPago').value,
+                montoPago: parseFloat(document.getElementById('montoPago').value) || 0
+            };
+            if (editingPagoIndex >= 0) {
+                pagosEmpleados[editingPagoIndex] = pago;
+                editingPagoIndex = -1;
+            } else {
+                pagosEmpleados.push(pago);
+            }
+            localStorage.setItem('pagosEmpleados', JSON.stringify(pagosEmpleados));
+            updateCounts();
+            showPagos();
+        }
+
+        function editarPago(i) {
+            editingPagoIndex = i;
+            showPagos();
+        }
+
+        function cancelarEdicionPago() {
+            editingPagoIndex = -1;
+            showPagos();
+        }
+
+        function cargarDatosPago(i) {
+            const p = pagosEmpleados[i];
+            document.getElementById('fechaPago').value = p.fechaPago || '';
+            document.getElementById('montoPago').value = p.montoPago || '';
+        }
+
+        function eliminarPago(i) {
+            pagosEmpleados.splice(i, 1);
+            localStorage.setItem('pagosEmpleados', JSON.stringify(pagosEmpleados));
+            updateCounts();
+            showPagos();
+        }
+
+        function showServicios() {
+            let content = '<h3>Servicios Pendientes</h3>';
+            const pendientes = clientes.filter(c => !c.completado);
+            if (pendientes.length === 0) {
+                content += '<p>No hay servicios pendientes.</p>';
+            } else {
+                content += '<table><tr><th>Nombre</th><th>Teléfono</th><th>Tipo de Auto</th><th>Trabajo</th><th>Fecha Ingreso</th><th>Costo Repuestos</th><th>Monto Cobrado</th></tr>';
+                pendientes.forEach(c => {
+                    content += `<tr><td>${c.nombre}</td><td>${c.telefono}</td><td>${c.tipoAuto || ''}</td><td>${c.trabajo || ''}</td><td>${c.fechaIngreso || ''}</td><td>$${c.costoRepuestos || 0}</td><td>$${c.montoCobrado || 0}</td></tr>`;
+                });
+                content += '</table>';
+            }
+            document.getElementById('content').innerHTML = content;
+        }
+
+        function showIngresos() {
+            const completados = clientes.filter(c => c.completado);
+            const totalCostoRepuestos = completados.reduce((sum, c) => sum + (c.costoRepuestos || 0), 0);
+            const totalMontoCobrado = completados.reduce((sum, c) => sum + (c.montoCobrado || 0), 0);
+            const totalGanancia = completados.reduce((sum, c) => sum + ((c.montoCobrado || 0) - (c.costoRepuestos || 0)), 0);
+            
+            // Ganancias por mes
+            const datosPorMes = {};
+            completados.forEach(c => {
+                if (c.fechaSalida) {
+                    const mes = c.fechaSalida.substring(0, 7); // YYYY-MM
+                    if (!datosPorMes[mes]) {
+                        datosPorMes[mes] = { cobrado: 0, repuestos: 0, ganancia: 0 };
+                    }
+                    datosPorMes[mes].cobrado += c.montoCobrado || 0;
+                    datosPorMes[mes].repuestos += c.costoRepuestos || 0;
+                    datosPorMes[mes].ganancia += (c.montoCobrado || 0) - (c.costoRepuestos || 0);
+                }
+            });
+            // Pagos por mes
+            const pagosPorMes = {};
+            pagosEmpleados.forEach(p => {
+                if (p.fechaPago) {
+                    const mes = p.fechaPago.substring(0, 7);
+                    pagosPorMes[mes] = (pagosPorMes[mes] || 0) + (p.montoPago || 0);
+                }
+            });
+            
+            let content = '<h3>Ingresos Totales</h3>';
+            content += `<p>Total Costo de Repuestos: $${totalCostoRepuestos.toFixed(2)}</p>`;
+            content += `<p>Total Monto Cobrado: $${totalMontoCobrado.toFixed(2)}</p>`;
+            content += `<p>Total Ganancia Bruta: $${totalGanancia.toFixed(2)}</p>`;
+            const totalPagos = pagosEmpleados.reduce((sum, p) => sum + (p.montoPago || 0), 0);
+            content += `<p>Total Pagos a Empleados: $${totalPagos.toFixed(2)}</p>`;
+            content += `<p>Ganancia Neta: $${(totalGanancia - totalPagos).toFixed(2)}</p>`;
+            content += '<h4>Ganancias por Mes</h4>';
+            if (Object.keys(datosPorMes).length === 0) {
+                content += '<p>No hay datos de ganancias por mes.</p>';
+            } else {
+                content += '<table><tr><th>Mes</th><th>Total Cobrado</th><th>Total Repuestos</th><th>Total Pagos Empleados</th><th>Ganancia Neta</th></tr>';
+                Object.keys(datosPorMes).sort().forEach(mes => {
+                    const d = datosPorMes[mes];
+                    const pagosMes = pagosPorMes[mes] || 0;
+                    const gananciaNeta = d.ganancia - pagosMes;
+                    content += `<tr><td>${mes}</td><td>$${d.cobrado.toFixed(2)}</td><td>$${d.repuestos.toFixed(2)}</td><td>$${pagosMes.toFixed(2)}</td><td>$${gananciaNeta.toFixed(2)}</td></tr>`;
+                });
+                content += '</table>';
+            }
+            document.getElementById('content').innerHTML = content;
+        }
+
+        updateCounts();
+    </script>
+</body>
+</html>
